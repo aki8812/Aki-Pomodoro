@@ -304,9 +304,57 @@ try {
     console.error("Worker init failed:", e);
 }
 
-// Silent Audio for Mobile Background Keep-Alive
-const silentAudio = new Audio("data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//oeEsAAAAWYAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//oeEsAAAAWYAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==");
-silentAudio.loop = true;
+// --- iOS Keep-Alive & Lock Screen Logic ---
+// We use a dedicated AudioContext to generate an INFINITE stream of silence.
+// This forces iOS to treat the app as a "Now Playing" audio source, preventing suspension
+// on both Home Screen and Lock Screen, and enabling the Lock Screen Widget.
+let keepAliveCtx = null;
+let keepAliveSource = null;
+let keepAliveAudio = new Audio();
+keepAliveAudio.autoplay = true;
+// Loop is not needed for stream, but good safety
+keepAliveAudio.loop = true;
+
+function initKeepAlive() {
+    if (!keepAliveCtx) {
+        keepAliveCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    if (keepAliveCtx.state === 'suspended') {
+        keepAliveCtx.resume();
+    }
+
+    // Create a 0Hz Oscillator (Silence)
+    if (!keepAliveSource) {
+        const oscillator = keepAliveCtx.createOscillator();
+        const dst = keepAliveCtx.createMediaStreamDestination();
+        const gain = keepAliveCtx.createGain();
+
+        // Ensure silence
+        gain.gain.value = 0.001; // Not 0, to avoid "optimization" removing it? actually 0 is fine usually but 0.001 is safer
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(0, keepAliveCtx.currentTime);
+
+        oscillator.connect(gain);
+        gain.connect(dst);
+
+        oscillator.start();
+        keepAliveSource = oscillator;
+
+        // Feed the stream into the Audio Element
+        keepAliveAudio.srcObject = dst.stream;
+        keepAliveAudio.play().catch(e => console.error("Keep-Alive Play Failed:", e));
+    } else {
+        keepAliveAudio.play().catch(e => console.error("Keep-Alive Resume Failed:", e));
+    }
+}
+
+function stopKeepAlive() {
+    keepAliveAudio.pause();
+    // We don't destroy the context/oscillator, just pause the element and maybe suspend context
+    // This allows quick resume without user interaction restrictions (since we already initialized)
+}
+
 
 // Wake Lock
 let wakeLock = null;
@@ -334,9 +382,10 @@ function updateMediaSession() {
         const minutes = Math.floor(state.timeLeft / 60);
         const seconds = state.timeLeft % 60;
         const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        const modeTitle = state.isWorking ? "🔥 專注中" : "☕ 休息中";
 
         navigator.mediaSession.metadata = new MediaMetadata({
-            title: state.isWorking ? "專注中..." : "休息中...",
+            title: modeTitle,
             artist: `剩餘時間: ${timeStr}`,
             album: "AkiPomodoro",
             artwork: [
@@ -359,10 +408,8 @@ if (timerWorker) {
         if (e.data.type === 'TICK') {
             state.timeLeft = e.data.timeLeft;
             updateDisplay();
-            // Update Media Session (Throttle if needed, but 1s is usually okay)
-            if (state.timeLeft % 5 === 0 || state.timeLeft < 60) { // Update every 5s generally, every 1s last minute
-                updateMediaSession();
-            }
+            // Update Media Session EVERY second for Lock Screen preview
+            updateMediaSession();
         } else if (e.data.type === 'FINISH') {
             state.timeLeft = 0;
             updateDisplay();
@@ -371,9 +418,9 @@ if (timerWorker) {
         }
     };
 } else {
-    // Fallback if Worker fails (shouldn't happen in PWA context but good safety)
-    console.warn("Using Main Thread Fallback");
-    // ... Implement basic fallback if strictly needed, or just rely on worker
+    // Fallback if Worker fails.
+    // Given the Oscillator Keep-Alive, main thread setInterval MIGHT actually work on iOS now, 
+    // but Worker is still safer.
 }
 
 function startTimer() {
@@ -384,8 +431,8 @@ function startTimer() {
         Notification.requestPermission();
     }
 
-    // Play Silent Audio (Unlock Mobile Audio Context)
-    silentAudio.play().catch(e => console.log("Audio play failed", e));
+    // Init iOS Keep-Alive (Must be direct result of user interaction)
+    initKeepAlive();
 
     // Request Wake Lock
     requestWakeLock();
@@ -416,7 +463,7 @@ function stopTimer() {
     state.endTime = null;
 
     // Stop Audio & Release Lock
-    silentAudio.pause();
+    stopKeepAlive();
     releaseWakeLock();
 
     toggleText.textContent = "開始";
