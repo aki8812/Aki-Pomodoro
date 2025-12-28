@@ -2,12 +2,14 @@
 const CONFIG = {
     workTime: 25 * 60,
     breakTime: 5 * 60,
-    autoStartBreak: false
+    autoStartBreak: false,
+    autoStartFocus: false
 };
 
 // State
 let state = {
     timeLeft: CONFIG.workTime,
+    endTime: null, // New: Target timestamp (ms)
     isWorking: true,
     isRunning: false,
     timerId: null,
@@ -42,6 +44,7 @@ const saveSettingsBtn = document.getElementById('save-settings');
 const inputWork = document.getElementById('setting-work');
 const inputBreak = document.getElementById('setting-break');
 const inputAuto = document.getElementById('setting-auto');
+const inputAutoFocus = document.getElementById('setting-auto-focus'); // New
 const errorWork = document.getElementById('error-work');
 const errorBreak = document.getElementById('error-break');
 
@@ -77,8 +80,11 @@ function playBeep(type = 'normal') {
 
         // System Notification
         if (Notification.permission === 'granted') {
-            new Notification(state.isWorking ? "番茄鐘暫停/結束" : "休息結束", {
-                body: state.isWorking ? "專注時間已結束，準備休息一下吧！" : "休息時間結束，該回到工作囉！",
+            const title = state.isWorking ? "休息時間結束" : "專注時間結束";
+            const body = state.isWorking ? "休息時間結束，該回到工作囉！" : "專注時間已結束，準備休息一下吧！";
+
+            new Notification(title, {
+                body: body,
                 icon: 'icon/icon-512x512.png',
                 requireInteraction: true
             });
@@ -130,7 +136,7 @@ function updateTheme() {
         toggleBtn.classList.replace('bg-blue-600', 'bg-yellow-500'); // Button bg
         toggleBtn.classList.replace('hover:bg-blue-500', 'hover:bg-yellow-400');
         toggleBtn.classList.replace('shadow-blue-600/20', 'shadow-yellow-500/20');
-        toggleBtn.classList.replace('text-white', 'text-black'); // Text contrast
+        toggleBtn.classList.replace('text-black', 'text-white'); // Text contrast
         modeText.textContent = "專注模式";
     } else {
         // Blue Theme
@@ -271,7 +277,12 @@ function switchMode() {
         state.isWorking = true;
         state.timeLeft = CONFIG.workTime;
         playBeep('finish');
-        stopTimer();
+
+        if (CONFIG.autoStartFocus) {
+            startTimer();
+        } else {
+            stopTimer();
+        }
     }
     updateTheme();
     updateDisplay();
@@ -294,27 +305,35 @@ function startTimer() {
     }
 
     state.isRunning = true;
+    // Calculate Target End Time (Current Time + Remaining Seconds * 1000)
+    state.endTime = Date.now() + state.timeLeft * 1000;
 
     toggleText.textContent = "暫停";
     playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
     playBeep('normal');
 
+    // Interval checks every 200ms but relies on Date.now() for accuracy
     state.timerId = setInterval(() => {
-        state.timeLeft--;
-        updateDisplay();
+        const now = Date.now();
+        const diff = Math.ceil((state.endTime - now) / 1000);
 
-        if (state.timeLeft < 0) {
-            // FIX: Stop current timer before switching
+        if (diff <= 0) {
+            state.timeLeft = 0;
+            updateDisplay();
             clearInterval(state.timerId);
             state.isRunning = false;
             switchMode();
+        } else {
+            state.timeLeft = diff;
+            updateDisplay();
         }
-    }, 1000);
+    }, 200);
 }
 
 function stopTimer() {
     state.isRunning = false;
     clearInterval(state.timerId);
+    state.endTime = null; // Clear target
     toggleText.textContent = "開始";
     playIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
 }
@@ -332,8 +351,6 @@ function skipTimer() {
 
 // Modal Logic
 function openSettings() {
-    // Capture current values on open to detect changes later?
-    // Not strictly needed if we compare against CONFIG inside saveSettings
     settingsModal.classList.remove('hidden');
     setTimeout(() => {
         settingsModal.classList.remove('opacity-0');
@@ -354,13 +371,10 @@ function validateInput(input, errorMsg) {
     let val = parseInt(input.value);
 
     // Clamp
-    if (isNaN(val) || input.value.trim() === '') val = (input === inputWork ? 25 : 5); // Default defaults
+    if (isNaN(val) || input.value.trim() === '') val = (input === inputWork ? 25 : 5);
     if (val < 1) val = 1;
     if (val > 1440) val = 1440;
 
-    // Show Error?
-    // Logic: If user *typed* correct value, hide error.
-    // If user typed bad value, show error AND clamp.
     const raw = parseInt(input.value);
     if (input.value !== '' && (raw < 1 || raw > 1440)) {
         errorMsg.classList.remove('hidden');
@@ -372,7 +386,6 @@ function validateInput(input, errorMsg) {
     return val;
 }
 
-// Event Listeners for Validation (Blur & Enter)
 function setupValidation(input, errorMsg) {
     input.addEventListener('blur', () => validateInput(input, errorMsg));
     input.addEventListener('keydown', (e) => {
@@ -381,45 +394,36 @@ function setupValidation(input, errorMsg) {
             input.blur();
         }
     });
-    // Hide error on focus/input
     input.addEventListener('input', () => errorMsg.classList.add('hidden'));
 }
 setupValidation(inputWork, errorWork);
 setupValidation(inputBreak, errorBreak);
 
-
 function saveSettings() {
-    // Validate final values
     const w = validateInput(inputWork, errorWork);
     const b = validateInput(inputBreak, errorBreak);
 
     const oldWork = CONFIG.workTime;
     const oldBreak = CONFIG.breakTime;
 
-    // Update Config
     CONFIG.workTime = w * 60;
     CONFIG.breakTime = b * 60;
     CONFIG.autoStartBreak = inputAuto.checked;
+    CONFIG.autoStartFocus = inputAutoFocus.checked;
 
     // Smart Reset Logic
     if (state.isWorking) {
-        // Currently Working
         if (CONFIG.workTime !== oldWork) {
-            // Work time changed -> Pause & Reset
             stopTimer();
             state.timeLeft = CONFIG.workTime;
             updateDisplay();
         }
-        // If Break time changed, do nothing to current timer
     } else {
-        // Currently Break
         if (CONFIG.breakTime !== oldBreak) {
-            // Break time changed -> Pause & Reset
             stopTimer();
             state.timeLeft = CONFIG.breakTime;
             updateDisplay();
         }
-        // If Work time changed, do nothing to current timer
     }
 
     closeSettings();
