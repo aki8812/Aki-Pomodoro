@@ -305,31 +305,54 @@ try {
 }
 
 // --- iOS Keep-Alive & Lock Screen Logic ---
-// We switch back to Base64 MP3 because the Oscillator stream sometimes fails 
-// to trigger the visual "Now Playing" widget on iOS Lock Screen.
-const silentAudio = new Audio("data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//oeEsAAAAWYAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//oeEsAAAAWYAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==");
-silentAudio.loop = true;
-// Important for iOS Media Session
-silentAudio.preload = 'auto';
+// We use a dedicated AudioContext to generate an INFINITE stream of silence.
+// This forces iOS to treat the app as a "Now Playing" audio source, preventing suspension
+// on both Home Screen and Lock Screen, and enabling the Lock Screen Widget.
+let keepAliveCtx = null;
+let keepAliveSource = null;
+let keepAliveAudio = new Audio();
+keepAliveAudio.autoplay = true;
+// Loop is not needed for stream, but good safety
+keepAliveAudio.loop = true;
 
 function initKeepAlive() {
-    // Resume AudioContext just in case (for Beeps)
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
+    if (!keepAliveCtx) {
+        keepAliveCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
 
-    // Play the silent file to trigger "Now Playing"
-    silentAudio.play().then(() => {
-        // Once playing, update the widget info
-        updateMediaSession();
-    }).catch(e => {
-        console.error("Keep-Alive Play Failed:", e);
-    });
+    if (keepAliveCtx.state === 'suspended') {
+        keepAliveCtx.resume();
+    }
+
+    // Create a 0Hz Oscillator (Silence)
+    if (!keepAliveSource) {
+        const oscillator = keepAliveCtx.createOscillator();
+        const dst = keepAliveCtx.createMediaStreamDestination();
+        const gain = keepAliveCtx.createGain();
+
+        // Ensure silence
+        gain.gain.value = 0.001; // Not 0, to avoid "optimization" removing it? actually 0 is fine usually but 0.001 is safer
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(0, keepAliveCtx.currentTime);
+
+        oscillator.connect(gain);
+        gain.connect(dst);
+
+        oscillator.start();
+        keepAliveSource = oscillator;
+
+        // Feed the stream into the Audio Element
+        keepAliveAudio.srcObject = dst.stream;
+        keepAliveAudio.play().catch(e => console.error("Keep-Alive Play Failed:", e));
+    } else {
+        keepAliveAudio.play().catch(e => console.error("Keep-Alive Resume Failed:", e));
+    }
 }
 
 function stopKeepAlive() {
-    silentAudio.pause();
-    // We can reset currentTime if we want, but pausing is enough
+    keepAliveAudio.pause();
+    // We don't destroy the context/oscillator, just pause the element and maybe suspend context
+    // This allows quick resume without user interaction restrictions (since we already initialized)
 }
 
 
