@@ -297,46 +297,132 @@ function toggleTimer() {
 }
 
 // Worker
-const timerWorker = new Worker('timer-worker.js');
+let timerWorker = null;
+try {
+    timerWorker = new Worker('timer-worker.js');
+} catch (e) {
+    console.error("Worker init failed:", e);
+}
 
-timerWorker.onmessage = function (e) {
-    if (e.data.type === 'TICK') {
-        state.timeLeft = e.data.timeLeft;
-        updateDisplay();
-    } else if (e.data.type === 'FINISH') {
-        state.timeLeft = 0;
-        updateDisplay();
-        state.isRunning = false;
-        switchMode();
+// Silent Audio for Mobile Background Keep-Alive
+const silentAudio = new Audio("data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//oeEsAAAAWYAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//oeEsAAAAWYAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==");
+silentAudio.loop = true;
+
+// Wake Lock
+let wakeLock = null;
+
+async function requestWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+        }
+    } catch (err) {
+        console.log(`Wake Lock Error: ${err.name}, ${err.message}`);
     }
-};
+}
+
+async function releaseWakeLock() {
+    if (wakeLock !== null) {
+        await wakeLock.release();
+        wakeLock = null;
+    }
+}
+
+// Media Session Helper
+function updateMediaSession() {
+    if ('mediaSession' in navigator) {
+        const minutes = Math.floor(state.timeLeft / 60);
+        const seconds = state.timeLeft % 60;
+        const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: state.isWorking ? "專注中..." : "休息中...",
+            artist: `剩餘時間: ${timeStr}`,
+            album: "AkiPomodoro",
+            artwork: [
+                { src: 'icon/icon-512x512.png', sizes: '512x512', type: 'image/png' }
+            ]
+        });
+
+        navigator.mediaSession.playbackState = state.isRunning ? "playing" : "paused";
+
+        // Setup Media Controls (Play/Pause/Next)
+        navigator.mediaSession.setActionHandler('play', startTimer);
+        navigator.mediaSession.setActionHandler('pause', stopTimer);
+        navigator.mediaSession.setActionHandler('nexttrack', skipTimer);
+    }
+}
+
+
+if (timerWorker) {
+    timerWorker.onmessage = function (e) {
+        if (e.data.type === 'TICK') {
+            state.timeLeft = e.data.timeLeft;
+            updateDisplay();
+            // Update Media Session (Throttle if needed, but 1s is usually okay)
+            if (state.timeLeft % 5 === 0 || state.timeLeft < 60) { // Update every 5s generally, every 1s last minute
+                updateMediaSession();
+            }
+        } else if (e.data.type === 'FINISH') {
+            state.timeLeft = 0;
+            updateDisplay();
+            state.isRunning = false;
+            switchMode();
+        }
+    };
+} else {
+    // Fallback if Worker fails (shouldn't happen in PWA context but good safety)
+    console.warn("Using Main Thread Fallback");
+    // ... Implement basic fallback if strictly needed, or just rely on worker
+}
 
 function startTimer() {
     if (state.isRunning) return;
 
-    // Request notification permission if not asked yet
+    // Request notification permission
     if (Notification.permission === 'default') {
         Notification.requestPermission();
     }
 
+    // Play Silent Audio (Unlock Mobile Audio Context)
+    silentAudio.play().catch(e => console.log("Audio play failed", e));
+
+    // Request Wake Lock
+    requestWakeLock();
+
     state.isRunning = true;
-    // Calculate Target End Time (Current Time + Remaining Seconds * 1000)
     state.endTime = Date.now() + state.timeLeft * 1000;
 
     toggleText.textContent = "暫停";
     playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
+
+    // Play Start Beep
     playBeep('normal');
 
+    // Update Media Session Immediately
+    updateMediaSession();
+
     // Send to Worker
-    timerWorker.postMessage({ command: 'START', endTime: state.endTime });
+    if (timerWorker) {
+        timerWorker.postMessage({ command: 'START', endTime: state.endTime });
+    }
 }
 
 function stopTimer() {
     state.isRunning = false;
-    timerWorker.postMessage({ command: 'STOP' });
-    state.endTime = null; // Clear target
+    if (timerWorker) {
+        timerWorker.postMessage({ command: 'STOP' });
+    }
+    state.endTime = null;
+
+    // Stop Audio & Release Lock
+    silentAudio.pause();
+    releaseWakeLock();
+
     toggleText.textContent = "開始";
     playIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+
+    updateMediaSession(); // Update to "paused"
 }
 // Note: clearInterval logic is gone, handled by Worker now
 
@@ -345,6 +431,7 @@ function resetTimer() {
     stopTimer();
     state.timeLeft = state.isWorking ? CONFIG.workTime : CONFIG.breakTime;
     updateDisplay();
+    updateMediaSession();
 }
 
 function skipTimer() {
