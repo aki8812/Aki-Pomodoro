@@ -296,6 +296,21 @@ function toggleTimer() {
     }
 }
 
+// Worker
+const timerWorker = new Worker('timer-worker.js');
+
+timerWorker.onmessage = function (e) {
+    if (e.data.type === 'TICK') {
+        state.timeLeft = e.data.timeLeft;
+        updateDisplay();
+    } else if (e.data.type === 'FINISH') {
+        state.timeLeft = 0;
+        updateDisplay();
+        state.isRunning = false;
+        switchMode();
+    }
+};
+
 function startTimer() {
     if (state.isRunning) return;
 
@@ -312,31 +327,19 @@ function startTimer() {
     playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
     playBeep('normal');
 
-    // Interval checks every 200ms but relies on Date.now() for accuracy
-    state.timerId = setInterval(() => {
-        const now = Date.now();
-        const diff = Math.ceil((state.endTime - now) / 1000);
-
-        if (diff <= 0) {
-            state.timeLeft = 0;
-            updateDisplay();
-            clearInterval(state.timerId);
-            state.isRunning = false;
-            switchMode();
-        } else {
-            state.timeLeft = diff;
-            updateDisplay();
-        }
-    }, 200);
+    // Send to Worker
+    timerWorker.postMessage({ command: 'START', endTime: state.endTime });
 }
 
 function stopTimer() {
     state.isRunning = false;
-    clearInterval(state.timerId);
+    timerWorker.postMessage({ command: 'STOP' });
     state.endTime = null; // Clear target
     toggleText.textContent = "開始";
     playIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
 }
+// Note: clearInterval logic is gone, handled by Worker now
+
 
 function resetTimer() {
     stopTimer();

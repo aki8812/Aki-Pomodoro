@@ -3,6 +3,7 @@ const ASSETS = [
     './index.html',
     './style.css',
     './script.js',
+    './timer-worker.js',
     './manifest.json',
     './favicon.ico',
     './icon/icon-512x512.png',
