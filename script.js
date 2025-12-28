@@ -570,7 +570,7 @@ function saveSettings() {
 }
 
 // Init
-updateDisplay();；
+updateDisplay();
 loadHistory();
 
 // Listeners
