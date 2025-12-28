@@ -382,11 +382,14 @@ function updateMediaSession() {
         const minutes = Math.floor(state.timeLeft / 60);
         const seconds = state.timeLeft % 60;
         const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        const modeTitle = state.isWorking ? "🔥 專注中" : "☕ 休息中";
+
+        // Get Task Name or Default
+        const currentTask = taskInput.value.trim() || (state.isWorking ? "專注事項" : "休息時間");
+        const statusLabel = state.isWorking ? "🔥 專注中" : "☕ 休息中";
 
         navigator.mediaSession.metadata = new MediaMetadata({
-            title: modeTitle,
-            artist: `剩餘時間: ${timeStr}`,
+            title: currentTask, // Primary Text: Task Name
+            artist: `${statusLabel} - ${timeStr}`, // Secondary Text: Status + Time
             album: "AkiPomodoro",
             artwork: [
                 { src: 'icon/icon-512x512.png', sizes: '512x512', type: 'image/png' }
@@ -567,7 +570,7 @@ function saveSettings() {
 }
 
 // Init
-updateDisplay();
+updateDisplay();；
 loadHistory();
 
 // Listeners
