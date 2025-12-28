@@ -1,0 +1,125 @@
+:root {
+    /* Colors */
+    --lemon-yellow: #FFF9C4; /* Soft Lemon */
+    --lemon-accent: #FBC02D;
+    --pale-blue: #B3E5FC;    /* Soft Blue */
+    --blue-accent: #0288D1;
+    --text-color: #424242;
+    --white-translucent: rgba(255, 255, 255, 0.6);
+    
+    /* Font */
+    --main-font: "Microsoft JhengHei", "微軟正黑體", sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--main-font);
+    color: var(--text-color);
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: background-color 0.8s ease;
+    overflow: hidden;
+}
+
+/* Themes via body class */
+body.mode-work {
+    background-color: var(--lemon-yellow);
+}
+
+body.mode-break {
+    background-color: var(--pale-blue);
+}
+
+.container {
+    text-align: center;
+    position: relative;
+    padding: 3rem;
+    border-radius: 50px;
+    background: var(--white-translucent);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.05); /* Very subtle shadow */
+    transition: all 0.5s ease;
+    min-width: 320px;
+}
+
+.status-label {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 2rem;
+    letter-spacing: 0.1em;
+    opacity: 0.8;
+}
+
+.timer {
+    font-size: 6rem;
+    font-weight: bold;
+    line-height: 1;
+    margin-bottom: 2rem;
+    font-variant-numeric: tabular-nums; /* Prevents jumping */
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+}
+
+button {
+    font-family: var(--main-font);
+    font-size: 1.2rem;
+    padding: 0.8rem 2rem;
+    border: none;
+    background: white;
+    color: var(--text-color);
+    border-radius: 30px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+button.primary {
+    font-weight: bold;
+}
+
+/* Specific Accent colors for buttons depending on mode */
+body.mode-work button.primary {
+    color: var(--lemon-accent);
+}
+
+body.mode-break button.primary {
+    color: var(--blue-accent);
+}
+
+.progress-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 450px;
+    height: 450px;
+    pointer-events: none;
+    z-index: -1;
+}
+
+circle {
+    transition: stroke-dashoffset 1s linear, stroke 0.8s ease;
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
+}

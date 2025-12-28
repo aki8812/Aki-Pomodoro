@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title></title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="favicon.ico">
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', 'Segoe UI', sans-serif;
+            background-color: #111827;
+            /* Gray 900 */
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .glass-panel {
+            background: rgba(31, 41, 55, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(75, 85, 99, 0.4);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .timer-font {
+            font-feature-settings: "tnum";
+            font-variant-numeric: tabular-nums;
+        }
+
+        .mode-transition {
+            transition: all 0.5s ease-in-out;
+        }
+
+        /* Hide Number Input Spinners */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            appearance: none;
+            margin: 0;
+        }
+
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+    </style>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+
+<body
+    class="text-gray-100 h-screen w-screen overflow-hidden flex flex-col items-center justify-center relative transition-colors duration-700 select-none">
+
+    <!-- Background Accents -->
+    <div class="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <div id="bg-glow"
+            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] h-[90vw] max-w-[600px] max-h-[600px] bg-yellow-500/10 rounded-full blur-3xl transition-colors duration-1000">
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="relative z-10 w-full max-w-md flex flex-col gap-6 p-4 h-full justify-center">
+
+        <!-- Header / Status -->
+        <div class="flex justify-between items-center glass-panel p-4 rounded-2xl shrink-0">
+            <div class="flex items-center gap-2">
+                <span id="status-dot"
+                    class="w-3 h-3 rounded-full bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)] transition-colors duration-500"></span>
+                <span id="mode-text" class="font-bold text-lg tracking-wide">專注模式</span>
+            </div>
+            <button id="settings-btn"
+                class="p-2 rounded-full hover:bg-white/10 transition text-gray-400 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z">
+                    </path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Timer Circle -->
+        <div class="relative w-72 h-72 mx-auto shrink-0">
+            <!-- SVG Ring -->
+            <svg class="w-full h-full transform -rotate-90">
+                <circle cx="144" cy="144" r="130" fill="transparent" stroke="#374151" stroke-width="8"></circle>
+                <circle id="progress-ring" cx="144" cy="144" r="130" fill="transparent" stroke="#EAB308"
+                    stroke-width="8" stroke-dasharray="816.8" stroke-dashoffset="0" stroke-linecap="round"
+                    class="transition-[stroke] duration-500"></circle>
+            </svg>
+
+            <!-- Centered Time -->
+            <div class="absolute inset-0 flex flex-col items-center justify-center select-none">
+                <div id="timer-display" class="text-7xl font-bold timer-font tracking-tight">25:00</div>
+                <div id="cycle-count" class="text-gray-500 text-sm mt-2 font-mono">#1</div>
+            </div>
+        </div>
+
+        <!-- Task Input -->
+        <div class="glass-panel p-1 rounded-xl flex items-center gap-2 shrink-0">
+            <div class="p-3 text-gray-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path>
+                    <path d="m9 12 2 2 4-4"></path>
+                </svg>
+            </div>
+            <input type="text" id="task-input" placeholder="當前目標..."
+                class="bg-transparent w-full text-white placeholder-gray-500 outline-none h-12 text-lg" value="專注工作">
+        </div>
+
+        <!-- Controls -->
+        <div class="flex justify-center gap-4 shrink-0">
+            <button id="reset-btn"
+                class="p-4 rounded-full bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12"></path>
+                    <path d="M3 3v9h9"></path>
+                </svg>
+            </button>
+            <button id="toggle-btn"
+                class="p-4 px-8 rounded-full bg-yellow-500 text-black hover:bg-yellow-400 transition shadow-lg shadow-yellow-500/20 font-bold text-xl flex items-center gap-2">
+                <svg id="play-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                    fill="currentColor" stroke="none">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <span id="toggle-text">開始</span>
+            </button>
+            <button id="skip-btn"
+                class="p-4 rounded-full bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="5 4 15 12 5 20 5 4"></polygon>
+                    <line x1="19" y1="5" x2="19" y2="19"></line>
+                </svg>
+            </button>
+        </div>
+
+        <!-- History -->
+        <div class="w-full glass-panel p-3 rounded-xl overflow-hidden shrink-0 flex flex-col gap-2">
+            <div class="flex justify-between items-center px-1">
+                <div class="text-xs text-gray-500 font-bold uppercase tracking-wider">今日紀錄</div>
+                <button id="clear-history" class="text-gray-500 hover:text-red-400 transition" title="清除紀錄">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <div id="history-list" class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide min-h-[50px] items-center">
+                <!-- Javascript will populate this -->
+                <div class="text-gray-600 text-sm italic py-2 w-full text-center">尚未完成任何番茄鐘</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal"
+        class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-gray-800 border border-gray-700 w-full max-w-sm rounded-2xl p-6 shadow-2xl transform scale-95 transition-transform duration-300 m-4"
+            id="settings-panel">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold">計時設定</h2>
+                <button id="close-settings" class="text-gray-400 hover:text-white"><svg
+                        xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg></button>
+            </div>
+
+            <div class="space-y-4">
+                <!-- Custom Input for Work Time -->
+                <div>
+                    <label class="block text-sm text-gray-400 mb-2">專注時間 (分鐘)</label>
+                    <div class="flex items-center w-full bg-gray-900 border border-gray-600 rounded-lg overflow-hidden">
+                        <button
+                            class="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold transition w-16 flex justify-center items-center"
+                            onclick="adjustTime('work', -1)">-</button>
+                        <input type="number" id="setting-work" value="25" min="1" max="1440"
+                            class="flex-grow bg-transparent text-center text-white outline-none font-bold text-lg p-0 appearance-none">
+                        <button
+                            class="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold transition w-16 flex justify-center items-center"
+                            onclick="adjustTime('work', 1)">+</button>
+                    </div>
+                </div>
+
+                <!-- Custom Input for Break Time -->
+                <div>
+                    <label class="block text-sm text-gray-400 mb-2">休息時間 (分鐘)</label>
+                    <div class="flex items-center w-full bg-gray-900 border border-gray-600 rounded-lg overflow-hidden">
+                        <button
+                            class="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold transition w-16 flex justify-center items-center"
+                            onclick="adjustTime('break', -1)">-</button>
+                        <input type="number" id="setting-break" value="5" min="1" max="1440"
+                            class="flex-grow bg-transparent text-center text-white outline-none font-bold text-lg p-0 appearance-none">
+                        <button
+                            class="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold transition w-16 flex justify-center items-center"
+                            onclick="adjustTime('break', 1)">+</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="setting-auto" class="sr-only peer">
+                        <div
+                            class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500">
+                        </div>
+                        <span class="ml-3 text-sm text-gray-300">自動開始休息</span>
+                    </label>
+                </div>
+            </div>
+
+            <button id="save-settings"
+                class="w-full mt-6 bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-xl transition">儲存設定</button>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Modal -->
+    <div id="confirm-modal"
+        class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-gray-800 border border-gray-700 w-full max-w-sm rounded-2xl p-6 shadow-2xl transform scale-95 transition-transform duration-300 m-4"
+            id="confirm-panel">
+            <h2 class="text-xl font-bold mb-4" id="confirm-title">確認</h2>
+            <p class="text-gray-300 mb-6" id="confirm-message">確定要執行此動作嗎？</p>
+
+            <div class="flex gap-3">
+                <button id="confirm-cancel"
+                    class="flex-1 bg-gray-600 hover:bg-gray-500 text-white font-bold py-3 rounded-xl transition">取消</button>
+                <button id="confirm-ok"
+                    class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl transition">確定</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js');
+        }
+
+        // Settings Adjust Heler
+        function adjustTime(type, amount) {
+            const input = document.getElementById(`setting-${type}`);
+            let val = parseInt(input.value) + amount;
+            if (val < 1) val = 1;
+            if (val > 60) val = 60;
+            input.value = val;
+        }
+    </script>
+</body>
+
+</html>
