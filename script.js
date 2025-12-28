@@ -42,6 +42,8 @@ const saveSettingsBtn = document.getElementById('save-settings');
 const inputWork = document.getElementById('setting-work');
 const inputBreak = document.getElementById('setting-break');
 const inputAuto = document.getElementById('setting-auto');
+const errorWork = document.getElementById('error-work');
+const errorBreak = document.getElementById('error-break');
 
 // Confirm Modal DOM
 const confirmModal = document.getElementById('confirm-modal');
@@ -53,8 +55,9 @@ const confirmCancelBtn = document.getElementById('confirm-cancel');
 
 let pendingConfirmAction = null;
 
-// Audio (Simple Beep)
+// Audio (Beep + Notification)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
 function playBeep(type = 'normal') {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const oscillator = audioCtx.createOscillator();
@@ -71,6 +74,15 @@ function playBeep(type = 'normal') {
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
         oscillator.start();
         oscillator.stop(audioCtx.currentTime + 0.5);
+
+        // System Notification
+        if (Notification.permission === 'granted') {
+            new Notification(state.isWorking ? "番茄鐘暫停/結束" : "休息結束", {
+                body: state.isWorking ? "專注時間已結束，準備休息一下吧！" : "休息時間結束，該回到工作囉！",
+                icon: 'icon/icon-512x512.png',
+                requireInteraction: true
+            });
+        }
     } else {
         oscillator.type = 'triangle'; // click sound
         oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
@@ -94,12 +106,12 @@ function updateDisplay() {
     document.title = `(${timeString}) ${state.isWorking ? '專注' : '休息'}`;
 
     // Dynamic Font Scaling
-    if (timeString.length >= 7) { // 1000:00+
+    if (timeString.length >= 7) {
         timerDisplay.style.fontSize = '3.5rem';
-    } else if (timeString.length >= 6) { // 100:00+
+    } else if (timeString.length >= 6) {
         timerDisplay.style.fontSize = '4.5rem';
     } else {
-        timerDisplay.style.fontSize = ''; // Default (text-7xl is 4.5rem, but let's stick to default style)
+        timerDisplay.style.fontSize = '';
     }
 
     // Ring Progress
@@ -136,13 +148,12 @@ function updateTheme() {
 
 // History Storage Logic
 function loadHistory() {
-    const today = new Date().toDateString(); // e.g., "Sun Dec 28 2025"
+    const today = new Date().toDateString();
     const saved = JSON.parse(localStorage.getItem('pomodoroProHistory') || '{}');
 
-    // Check if new day (if last saved date !== today, reset)
     if (saved.date !== today) {
         historyData = [];
-        saveHistory(); // Clear it
+        saveHistory();
     } else {
         historyData = saved.sessions || [];
     }
@@ -187,7 +198,6 @@ confirmOkBtn.onclick = () => {
 };
 confirmCancelBtn.onclick = hideConfirm;
 
-
 function clearHistory() {
     showConfirm("清除所有紀錄", "確定要刪除今日所有番茄鐘紀錄嗎？", () => {
         historyData = [];
@@ -200,7 +210,7 @@ function clearHistory() {
 
 function deleteHistoryItem(index) {
     showConfirm("刪除紀錄", "確定要刪除這筆番茄鐘紀錄嗎？", () => {
-        historyData.splice(index, 1); // Remove item
+        historyData.splice(index, 1);
         saveHistory();
         state.totalSessions = historyData.length;
         cycleCount.textContent = `#${state.totalSessions + 1}`;
@@ -217,7 +227,6 @@ function renderHistory() {
         return;
     }
 
-    // Reverse loop to show newest first
     for (let i = historyData.length - 1; i >= 0; i--) {
         const h = historyData[i];
         const item = document.createElement('div');
@@ -228,10 +237,7 @@ function renderHistory() {
             <span class="text-xs text-gray-400 font-mono">${h.timeStr}</span>
             <span class="text-sm font-bold text-gray-200 truncate w-full max-w-[120px]">${h.task}</span>
         `;
-
-        // Click to delete
         item.onclick = () => deleteHistoryItem(i);
-
         historyList.appendChild(item);
     }
 }
@@ -242,12 +248,10 @@ function addToHistory() {
 
     historyData.push({ timeStr, task: taskName });
     saveHistory();
-
     state.totalSessions = historyData.length;
     cycleCount.textContent = `#${state.totalSessions + 1}`;
     renderHistory();
 }
-
 
 function switchMode() {
     if (state.isWorking) {
@@ -260,14 +264,14 @@ function switchMode() {
         if (CONFIG.autoStartBreak) {
             startTimer();
         } else {
-            stopTimer(); // Wait for user
+            stopTimer();
         }
     } else {
         // Break finished -> Work
         state.isWorking = true;
         state.timeLeft = CONFIG.workTime;
         playBeep('finish');
-        stopTimer(); // Always pause before Work starts
+        stopTimer();
     }
     updateTheme();
     updateDisplay();
@@ -283,10 +287,16 @@ function toggleTimer() {
 
 function startTimer() {
     if (state.isRunning) return;
+
+    // Request notification permission if not asked yet
+    if (Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+
     state.isRunning = true;
 
     toggleText.textContent = "暫停";
-    playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>'; // Pause Icon
+    playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
     playBeep('normal');
 
     state.timerId = setInterval(() => {
@@ -294,7 +304,9 @@ function startTimer() {
         updateDisplay();
 
         if (state.timeLeft < 0) {
+            // FIX: Stop current timer before switching
             clearInterval(state.timerId);
+            state.isRunning = false;
             switchMode();
         }
     }, 1000);
@@ -304,7 +316,7 @@ function stopTimer() {
     state.isRunning = false;
     clearInterval(state.timerId);
     toggleText.textContent = "開始";
-    playIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>'; // Play Icon
+    playIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
 }
 
 function resetTimer() {
@@ -315,14 +327,14 @@ function resetTimer() {
 
 function skipTimer() {
     stopTimer();
-    // Simulate finish
     switchMode();
 }
 
 // Modal Logic
 function openSettings() {
+    // Capture current values on open to detect changes later?
+    // Not strictly needed if we compare against CONFIG inside saveSettings
     settingsModal.classList.remove('hidden');
-    // small delay for transition
     setTimeout(() => {
         settingsModal.classList.remove('opacity-0');
         settingsPanel.classList.remove('scale-95');
@@ -337,56 +349,85 @@ function closeSettings() {
     }, 300);
 }
 
+// Validation Helper
+function validateInput(input, errorMsg) {
+    let val = parseInt(input.value);
+
+    // Clamp
+    if (isNaN(val) || input.value.trim() === '') val = (input === inputWork ? 25 : 5); // Default defaults
+    if (val < 1) val = 1;
+    if (val > 1440) val = 1440;
+
+    // Show Error?
+    // Logic: If user *typed* correct value, hide error.
+    // If user typed bad value, show error AND clamp.
+    const raw = parseInt(input.value);
+    if (input.value !== '' && (raw < 1 || raw > 1440)) {
+        errorMsg.classList.remove('hidden');
+    } else {
+        errorMsg.classList.add('hidden');
+    }
+
+    input.value = val;
+    return val;
+}
+
+// Event Listeners for Validation (Blur & Enter)
+function setupValidation(input, errorMsg) {
+    input.addEventListener('blur', () => validateInput(input, errorMsg));
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            validateInput(input, errorMsg);
+            input.blur();
+        }
+    });
+    // Hide error on focus/input
+    input.addEventListener('input', () => errorMsg.classList.add('hidden'));
+}
+setupValidation(inputWork, errorWork);
+setupValidation(inputBreak, errorBreak);
+
+
 function saveSettings() {
-    // Get raw values
-    let wRaw = inputWork.value;
-    let bRaw = inputBreak.value;
+    // Validate final values
+    const w = validateInput(inputWork, errorWork);
+    const b = validateInput(inputBreak, errorBreak);
 
-    let w = parseInt(wRaw);
-    let b = parseInt(bRaw);
+    const oldWork = CONFIG.workTime;
+    const oldBreak = CONFIG.breakTime;
 
-    // Strict Validation for Work
-    if (wRaw === '' || isNaN(w)) {
-        alert("專注時間只能輸入 1 到 1440 的數字！");
-        w = 25; // Default
-    } else if (w < 1) {
-        alert("專注時間只能輸入 1 到 1440 的數字！");
-        w = 25; // Default for < 1
-    } else if (w > 1440) {
-        alert("專注時間只能輸入 1 到 1440 的數字！");
-        w = 1440; // Max
-    }
-
-    // Strict Validation for Break
-    if (bRaw === '' || isNaN(b)) {
-        alert("休息時間只能輸入 1 到 1440 的數字！");
-        b = 5; // Default
-    } else if (b < 1) {
-        alert("休息時間只能輸入 1 到 1440 的數字！");
-        b = 5; // Default for < 1
-    } else if (b > 1440) {
-        alert("休息時間只能輸入 1 到 1440 的數字！");
-        b = 1440; // Max
-    }
-
-    // Update inputs
-    inputWork.value = w;
-    inputBreak.value = b;
-
+    // Update Config
     CONFIG.workTime = w * 60;
     CONFIG.breakTime = b * 60;
     CONFIG.autoStartBreak = inputAuto.checked;
 
-    // Apply changes if timer not running or reset
-    if (!state.isRunning) {
-        resetTimer();
+    // Smart Reset Logic
+    if (state.isWorking) {
+        // Currently Working
+        if (CONFIG.workTime !== oldWork) {
+            // Work time changed -> Pause & Reset
+            stopTimer();
+            state.timeLeft = CONFIG.workTime;
+            updateDisplay();
+        }
+        // If Break time changed, do nothing to current timer
+    } else {
+        // Currently Break
+        if (CONFIG.breakTime !== oldBreak) {
+            // Break time changed -> Pause & Reset
+            stopTimer();
+            state.timeLeft = CONFIG.breakTime;
+            updateDisplay();
+        }
+        // If Work time changed, do nothing to current timer
     }
+
     closeSettings();
 }
 
 // Init
 updateDisplay();
-loadHistory(); // Load on start
+loadHistory();
 
 // Listeners
 toggleBtn.addEventListener('click', toggleTimer);
